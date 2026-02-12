@@ -33,11 +33,15 @@ pip install -r requirements.txt
 
 ```powershell
 ./scripts/windows_setup.ps1
+# 或（仓库根目录包装脚本）
+./windows_setup.ps1
 ```
 
 ```bat
 REM CMD
 scripts\windows_setup.bat
+REM 或（仓库根目录包装脚本）
+windows_setup.bat
 ```
 
 安装后可直接使用 venv 里的 Python（无需 `Activate.ps1`）：
@@ -132,6 +136,30 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
   - 也可以完全绕过激活脚本，直接使用 `.\.venv\Scripts\python.exe ...`（推荐）。
+
+
+- 若提示 `./scripts/windows_setup.ps1`（或 `./windows_setup.ps1`）无法识别，通常是**当前目录不是仓库根目录**或文件不存在。先执行：
+
+```powershell
+Get-Location
+Get-ChildItem .
+Get-ChildItem .\scripts\windows_setup*
+```
+
+  如果找不到脚本，请切换到仓库根目录后重试，或直接运行根目录包装脚本：
+
+```powershell
+.\windows_setup.ps1
+```
+
+- 在 PowerShell 中调用可执行文件建议使用调用运算符 `&`，例如：
+
+```powershell
+& .\.venv\Scripts\python.exe -m mco_mnox.cli --help
+& .\.venv\Scripts\python.exe -m streamlit run mco_mnox/gui.py
+```
+
+  如果提示 `\.venv\Scripts\python.exe 无法识别`，说明 venv 尚未成功创建，先运行 `windows_setup.ps1/.bat`。
 
 ## 2) 如何准备 positives/unlabeled 数据
 
