@@ -7,3 +7,4 @@ pytest
 streamlit
 torch
 transformers
+huggingface_hub

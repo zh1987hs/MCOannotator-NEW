@@ -184,6 +184,40 @@ features:
 - 在线模式可配代理或镜像；
 - 如需 HuggingFace 镜像，可尝试在环境变量中设置 `HF_ENDPOINT`。
 
+
+#### ESM2 权重下载（修复 huggingface_hub CLI 报错）
+
+你遇到的报错：
+
+- `No module named huggingface_hub.cli.__main__`
+
+通常是因为新版 `huggingface_hub` 不再支持 `python -m huggingface_hub.cli download ...` 这种入口。
+
+建议改用本仓库提供的 Python 下载脚本（最稳）：
+
+```powershell
+$env:HF_ENDPOINT="https://hf-mirror.com"
+& .\.venv\Scripts\python.exe scripts/download_esm.py --repo-id facebook/esm2_t12_35M_UR50D --local-dir D:/models/esm2_t12_35M_UR50D
+# 650M 版本
+& .\.venv\Scripts\python.exe scripts/download_esm.py --repo-id facebook/esm2_t33_650M_UR50D --local-dir D:/models/esm2_t33_650M_UR50D
+```
+
+或使用新版 CLI：
+
+```powershell
+$env:HF_ENDPOINT="https://hf-mirror.com"
+& .\.venv\Scripts\python.exe -m huggingface_hub.commands.download facebook/esm2_t12_35M_UR50D --local-dir D:/models/esm2_t12_35M_UR50D
+```
+
+下载后把配置改为：
+
+```yaml
+features:
+  embedder: esm2_t33_650M
+  esm_local_dir: "D:/models/esm2_t33_650M_UR50D"
+  esm_force_local: true
+```
+
 ## 2) 如何准备 positives/unlabeled 数据
 
 - `positives.fasta`：实验确认具有 Mn(II)-oxidizing 活性的 MCO（通常约 20 条）。
