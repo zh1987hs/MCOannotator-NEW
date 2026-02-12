@@ -79,6 +79,84 @@ python -m mco_mnox.cli predict --model runs/toy/model.pkl --fasta data/toy/unlab
 ```
 
 
+
+## Windows PowerShell 从零到 GUI 全流程（可直接复制）
+
+> 假设项目目录是 `D:\MCOannotation`。
+
+### 0) 打开 PowerShell 并进入项目目录
+
+```powershell
+cd D:\MCOannotation
+```
+
+### 1) 临时放开当前窗口脚本执行策略
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+### 2) 一键创建 venv + 安装依赖
+
+```powershell
+.\windows_setup.ps1
+```
+
+如果你在中国大陆并使用镜像下载 ESM 权重，可先设置：
+
+```powershell
+$env:HF_ENDPOINT="https://hf-mirror.com"
+```
+
+### 3) （可选）离线下载 ESM2 权重
+
+```powershell
+& .\.venv\Scripts\python.exe scripts/download_esm.py --repo-id facebook/esm2_t12_35M_UR50D --local-dir D:/models/esm2_t12_35M_UR50D
+```
+
+或 650M：
+
+```powershell
+& .\.venv\Scripts\python.exe scripts/download_esm.py --repo-id facebook/esm2_t33_650M_UR50D --local-dir D:/models/esm2_t33_650M_UR50D
+```
+
+### 4) 启动 GUI
+
+```powershell
+.\scripts\windows_run_gui_full.ps1
+```
+
+浏览器打开：`http://localhost:8501`。
+
+### 5) 在 GUI 里如何填
+
+- `positives.fasta 路径`：如 `D:/MCOannotation/data/real/positives.fasta`
+- `unlabeled.fasta 路径`：如 `D:/MCOannotation/data/real/unlabeled.fasta`
+- `negatives.fasta`：可空
+- `配置文件`：`configs/default.yaml`
+- `Embedding`：选 `esm2_t33_650M`（或先用 `esm2_t12_35M`）
+- 若已离线下载：
+  - `ESM 本地权重目录` = `D:/models/esm2_t33_650M_UR50D`
+  - 勾选 `仅本地加载（离线模式）`
+- 点击 **开始训练**
+
+训练结束后切到“预测”页：
+- `model.pkl 路径`：`runs/gui_run/model.pkl`（或你训练时的 outdir）
+- `待预测 FASTA`：你的未知序列 fasta
+- `输出 TSV`：如 `runs/gui_run/results.tsv`
+- 点击 **开始预测**
+
+### 6) 输出结果在哪里
+
+- `results.tsv`：每条序列分数与解释字段
+- `results.json`：三类候选清单（高分低不确定/高分高不确定/边界案例）
+
+### 7) 常见报错快速处理
+
+- 找不到 `windows_setup.ps1`：先确认在仓库根目录执行 `Get-Location`。
+- 找不到 `.venv\Scripts\python.exe`：说明 setup 未成功，先重跑 `\windows_setup.ps1`。
+- `streamlit` 缺失：`& .\.venv\Scripts\python.exe -m pip install -r requirements.txt`。
+
 ## GUI 使用（Streamlit）
 
 安装依赖后可直接启动本地图形界面：
