@@ -28,6 +28,25 @@ py -3 -m venv .venv
 pip install -r requirements.txt
 ```
 
+
+### Windows 快速安装（推荐，不需要激活脚本）
+
+```powershell
+./scripts/windows_setup.ps1
+```
+
+```bat
+REM CMD
+scripts\windows_setup.bat
+```
+
+安装后可直接使用 venv 里的 Python（无需 `Activate.ps1`）：
+
+```powershell
+.\.venv\Scripts\python.exe -m mco_mnox.cli --help
+.\.venv\Scripts\python.exe -m streamlit run mco_mnox/gui.py
+```
+
 训练：
 
 ```bash
@@ -94,6 +113,25 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 - 若无法安装 `streamlit`（公司代理/离线环境），CLI 仍可正常使用；GUI 仅在安装 `streamlit` 后可用。
+
+- 若 `py -3 -m venv .venv` 报 `Could not find platform independent libraries <prefix>`：
+  1) 先试 `python -m venv .venv`；
+  2) 执行 `py -0p` 检查 Python 安装路径是否异常；
+  3) 建议重装官方 Python（勾选 *Add python.exe to PATH*），或用 `winget install Python.Python.3.11`。
+- 若 PowerShell 提示 `禁止运行脚本`（ExecutionPolicy）：
+  - 临时仅当前窗口放行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+  - 或长期当前用户：
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+  - 也可以完全绕过激活脚本，直接使用 `.\.venv\Scripts\python.exe ...`（推荐）。
 
 ## 2) 如何准备 positives/unlabeled 数据
 
