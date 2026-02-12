@@ -5,8 +5,8 @@ from typing import Optional
 
 import streamlit as st
 
-from .model import load_model, predict, train_model
-from .utils import load_config, set_seed, setup_logging
+from mco_mnox.model import load_model, predict, train_model
+from mco_mnox.utils import load_config, set_seed, setup_logging
 
 
 def _safe_path(p: str) -> Optional[Path]:
