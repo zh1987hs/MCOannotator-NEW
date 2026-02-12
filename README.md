@@ -4,9 +4,27 @@
 
 ## 1) 安装与运行示例
 
+### Linux / macOS
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Windows (PowerShell)
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### Windows (CMD)
+
+```bat
+py -3 -m venv .venv
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
@@ -48,9 +66,34 @@ python scripts/run_gui.py
 python -m streamlit run mco_mnox/gui.py
 ```
 
+Windows 下也可以直接运行：
+
+```powershell
+python scripts/run_gui.py
+# 或 PowerShell 脚本
+./scripts/run_gui.ps1
+```
+
+```bat
+REM CMD
+scripts\run_gui.bat
+```
+
 GUI 提供两个页面：
 - **训练**：填写 positives/unlabeled/(可选)negatives、策略、embedder、输出目录后训练；
 - **预测**：加载 `model.pkl` + FASTA，输出 `results.tsv` 与 `results.json`，并在界面中展示表格与候选优先级。
+
+
+## Windows 使用建议（重点）
+
+- 路径可使用 `C:\data\positives.fasta` 或 `C:/data/positives.fasta`，程序内部使用 `pathlib` 处理。
+- 如果 PowerShell 执行策略拦截激活脚本，可先执行：
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+- 若无法安装 `streamlit`（公司代理/离线环境），CLI 仍可正常使用；GUI 仅在安装 `streamlit` 后可用。
 
 ## 2) 如何准备 positives/unlabeled 数据
 
