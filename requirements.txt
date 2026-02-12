@@ -5,3 +5,5 @@ biopython
 pyyaml
 pytest
 streamlit
+torch
+transformers

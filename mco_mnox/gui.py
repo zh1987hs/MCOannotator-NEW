@@ -44,6 +44,16 @@ def run_app() -> None:
         strategy = st.selectbox("PU 策略", ["bagging", "rn"], index=0)
         embedder = st.selectbox("Embedding", ["none", "esm2_t12_35M", "esm2_t33_650M", "protT5"], index=0)
 
+        st.markdown("#### ESM2 参数（embedder 选择 ESM 时生效）")
+        c3, c4 = st.columns(2)
+        with c3:
+            esm_local_dir = st.text_input("ESM 本地权重目录（可留空）", "")
+            esm_force_local = st.checkbox("仅本地加载（离线模式）", value=False)
+        with c4:
+            esm_device = st.selectbox("ESM 设备", ["auto", "cpu", "cuda"], index=0)
+            esm_batch_size = st.number_input("ESM batch size", min_value=1, value=4, step=1)
+            esm_max_length = st.number_input("ESM max length", min_value=128, value=1024, step=64)
+
         if st.button("开始训练", type="primary"):
             pos_p, unl_p, neg_p = _safe_path(pos), _safe_path(unl), _safe_path(neg)
             outdir_p, cfg_p = _safe_path(outdir), _safe_path(config_path)
@@ -61,6 +71,11 @@ def run_app() -> None:
                 cfg["seed"] = int(seed)
                 cfg["pu"]["strategy"] = strategy
                 cfg["features"]["embedder"] = embedder
+                cfg["features"]["esm_local_dir"] = esm_local_dir.strip()
+                cfg["features"]["esm_force_local"] = bool(esm_force_local)
+                cfg["features"]["esm_device"] = esm_device
+                cfg["features"]["esm_batch_size"] = int(esm_batch_size)
+                cfg["features"]["esm_max_length"] = int(esm_max_length)
                 outdir_p.mkdir(parents=True, exist_ok=True)
 
                 set_seed(int(seed))

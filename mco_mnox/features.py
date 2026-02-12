@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint as IP
@@ -21,6 +20,11 @@ MOTIF_PATTERNS = {
     "motif2": r"H.A?H",  # HXH tolerant
     "motif3": r"H..H.H",  # HXXHXH
     "motif4": r"HC.H..?.?H",  # HCHXXXH tolerant
+}
+
+ESM_MODEL_MAP = {
+    "esm2_t12_35M": "facebook/esm2_t12_35M_UR50D",
+    "esm2_t33_650M": "facebook/esm2_t33_650M_UR50D",
 }
 
 
@@ -102,7 +106,7 @@ def acidic_features(seq: str) -> Dict[str, float]:
 
 def composition_features(seq: str) -> Dict[str, float]:
     c = Counter(seq)
-    out = {
+    return {
         "length": float(len(seq)),
         "his_ratio": c.get("H", 0) / max(1, len(seq)),
         "cys_ratio": c.get("C", 0) / max(1, len(seq)),
@@ -110,7 +114,6 @@ def composition_features(seq: str) -> Dict[str, float]:
         "low_complexity_ratio": _low_complexity_ratio(seq),
         "tm_helix_flag": tm_helix_flag(seq),
     }
-    return out
 
 
 def _low_complexity_ratio(seq: str, k: int = 3) -> float:
@@ -138,31 +141,114 @@ def kmer_embed(seq: str, k: int = 3) -> np.ndarray:
 
 
 class EmbeddingExtractor:
-    def __init__(self, embedder: str = "none", cache_path: str | Path = ".cache/embeddings.json"):
+    def __init__(
+        self,
+        embedder: str = "none",
+        cache_path: str | Path = ".cache/embeddings.json",
+        embedder_kwargs: Optional[Dict] = None,
+    ):
         self.embedder = embedder
         self.cache_path = Path(cache_path)
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache: Dict[str, List[float]] = {}
         if self.cache_path.exists():
             self.cache = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        self.embedder_kwargs = embedder_kwargs or {}
+        self._esm_tokenizer = None
+        self._esm_model = None
+        self._esm_device = None
 
     def _save(self):
         self.cache_path.write_text(json.dumps(self.cache), encoding="utf-8")
 
+    def _init_esm(self) -> None:
+        if self._esm_model is not None:
+            return
+        try:
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+        except Exception as e:
+            raise ImportError(
+                "ESM2 embedding requires torch + transformers. "
+                "Install them and retry, or use --embedder none."
+            ) from e
+
+        local_dir = self.embedder_kwargs.get("esm_local_dir")
+        force_local = bool(self.embedder_kwargs.get("esm_force_local", False))
+        target = str(local_dir).strip() if local_dir else ESM_MODEL_MAP[self.embedder]
+        local_files_only = force_local or bool(local_dir)
+
+        self._esm_tokenizer = AutoTokenizer.from_pretrained(target, local_files_only=local_files_only)
+        self._esm_model = AutoModel.from_pretrained(target, local_files_only=local_files_only)
+
+        device = self.embedder_kwargs.get("esm_device", "cpu")
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._esm_device = torch.device(device)
+        self._esm_model.to(self._esm_device)
+        self._esm_model.eval()
+
+    def _embed_batch_esm(self, seqs: List[str]) -> np.ndarray:
+        import torch
+
+        self._init_esm()
+        max_len = int(self.embedder_kwargs.get("esm_max_length", 1024))
+        encoded = self._esm_tokenizer(
+            seqs,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_len,
+        )
+        encoded = {k: v.to(self._esm_device) for k, v in encoded.items()}
+        with torch.no_grad():
+            out = self._esm_model(**encoded)
+            hidden = out.last_hidden_state
+            mask = encoded["attention_mask"].unsqueeze(-1)
+            pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+        return pooled.detach().cpu().numpy().astype(np.float32)
+
     def _embed_single(self, seq: str) -> np.ndarray:
-        # Pluggable names kept for CLI compatibility; currently uses robust fallback.
-        # You may extend with ESM/ProtT5 loading when weights available.
+        if self.embedder == "none":
+            return kmer_embed(seq, k=3)
+        if self.embedder in ESM_MODEL_MAP:
+            return self._embed_batch_esm([seq])[0]
+        # fallback for unsupported names (e.g., protT5 placeholder)
         return kmer_embed(seq, k=3)
 
     def embed(self, records: List[SequenceRecord]) -> np.ndarray:
         embs = []
         changed = False
-        for r in records:
+
+        missing_indices: List[int] = []
+        missing_hashes: List[str] = []
+        missing_seqs: List[str] = []
+
+        for i, r in enumerate(records):
             h = seq_hash(r.sequence)
-            if h not in self.cache:
-                self.cache[h] = self._embed_single(r.sequence).tolist()
+            if h in self.cache:
+                embs.append(np.array(self.cache[h], dtype=np.float32))
+                continue
+            embs.append(None)
+            missing_indices.append(i)
+            missing_hashes.append(h)
+            missing_seqs.append(r.sequence)
+
+        if missing_indices:
+            if self.embedder in ESM_MODEL_MAP:
+                bs = int(self.embedder_kwargs.get("esm_batch_size", 4))
+                generated = []
+                for i in range(0, len(missing_seqs), bs):
+                    generated.append(self._embed_batch_esm(missing_seqs[i : i + bs]))
+                gen_emb = np.vstack(generated)
+            else:
+                gen_emb = np.vstack([self._embed_single(s) for s in missing_seqs])
+
+            for idx, h, vec in zip(missing_indices, missing_hashes, gen_emb):
+                self.cache[h] = vec.tolist()
+                embs[idx] = np.array(vec, dtype=np.float32)
                 changed = True
-            embs.append(np.array(self.cache[h], dtype=np.float32))
+
         if changed:
             self._save()
         return np.vstack(embs)
@@ -184,8 +270,8 @@ def handcrafted_features(records: List[SequenceRecord]) -> Tuple[np.ndarray, Lis
     return mat, rows, feat_names
 
 
-def build_features(records: List[SequenceRecord], embedder: str, cache_path: str | Path):
-    emb = EmbeddingExtractor(embedder=embedder, cache_path=cache_path).embed(records)
+def build_features(records: List[SequenceRecord], embedder: str, cache_path: str | Path, embedder_kwargs: Optional[Dict] = None):
+    emb = EmbeddingExtractor(embedder=embedder, cache_path=cache_path, embedder_kwargs=embedder_kwargs).embed(records)
     hand, hand_rows, hand_names = handcrafted_features(records)
     x = np.hstack([emb, hand])
     feat_names = [f"emb_{i}" for i in range(emb.shape[1])] + hand_names

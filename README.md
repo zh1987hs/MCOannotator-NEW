@@ -161,6 +161,29 @@ Get-ChildItem .\scripts\windows_setup*
 
   如果提示 `\.venv\Scripts\python.exe 无法识别`，说明 venv 尚未成功创建，先运行 `windows_setup.ps1/.bat`。
 
+
+### 真实 ESM2 使用（离线/在线）
+
+当前代码已支持真实 `esm2_t12_35M` / `esm2_t33_650M` 推理。建议先在 `configs/default.yaml` 中设置：
+
+```yaml
+features:
+  embedder: esm2_t33_650M
+  esm_local_dir: "D:/models/esm2_t33_650M_UR50D"  # 离线目录，留空则在线拉取
+  esm_force_local: true
+  esm_device: auto
+  esm_batch_size: 2
+  esm_max_length: 1024
+```
+
+- 离线模式：把模型目录完整下载到本地后，设置 `esm_local_dir` + `esm_force_local: true`。
+- 在线模式：`esm_local_dir` 留空，`esm_force_local: false`，程序会按模型名在线下载并缓存。
+
+中国大陆建议：
+- 优先离线模式（最稳定）；
+- 在线模式可配代理或镜像；
+- 如需 HuggingFace 镜像，可尝试在环境变量中设置 `HF_ENDPOINT`。
+
 ## 2) 如何准备 positives/unlabeled 数据
 
 - `positives.fasta`：实验确认具有 Mn(II)-oxidizing 活性的 MCO（通常约 20 条）。
@@ -229,10 +252,12 @@ Get-ChildItem .\scripts\windows_setup*
 
 ## 7) 离线模型权重准备（ESM2/ProtT5）
 
-当前代码默认使用离线 fallback embedding。若要启用真实 PLM：
-- 在离线环境预下载 HuggingFace/ESM 权重到本地目录；
-- 扩展 `mco_mnox/features.py::EmbeddingExtractor._embed_single`，按 `embedder` 名称加载本地权重推理；
-- 保持缓存机制不变，即可复用本框架。
+当前代码已内置 ESM2 (`esm2_t12_35M` / `esm2_t33_650M`) 推理入口。
+- 离线：下载模型到本地后配置 `features.esm_local_dir`，并设置 `features.esm_force_local: true`；
+- 在线：`esm_local_dir` 留空，程序自动下载并缓存；
+- 若缺少依赖（`torch`/`transformers`）会提示安装，或可回退 `embedder: none`。
+
+> `protT5` 目前仍为占位接口，默认回退到 k-mer embedding；如需我也可继续补齐 ProtT5 本地推理。
 
 ## 8) 可复现性
 

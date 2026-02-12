@@ -1,6 +1,11 @@
 seed: 42
 features:
   embedder: none  # options: esm2_t33_650M | esm2_t12_35M | protT5 | none
+  esm_local_dir: ""  # local model dir for offline usage, e.g. D:/models/esm2_t33_650M_UR50D
+  esm_force_local: false  # true => local_files_only
+  esm_device: auto  # auto | cpu | cuda
+  esm_batch_size: 4
+  esm_max_length: 1024
 model:
   logreg_c: 1.0
 pu:

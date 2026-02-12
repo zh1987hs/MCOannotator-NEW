@@ -36,7 +36,10 @@ def train_model(pos_fasta: str, unl_fasta: str, outdir: str, config: Dict, neg_f
     train_records = positives + negatives + unlabeled
 
     x_all, feat_names, hand_rows, emb = build_features(
-        train_records, config["features"]["embedder"], outp / "embedding_cache.json"
+        train_records,
+        config["features"]["embedder"],
+        outp / "embedding_cache.json",
+        embedder_kwargs=config.get("features", {}),
     )
 
     n_p, n_n = len(positives), len(negatives)
@@ -113,6 +116,7 @@ def predict(model: TrainedModel, fasta: str, out_tsv: str):
         records,
         model.config["features"]["embedder"],
         Path(out_tsv).parent / "embedding_cache.predict.json",
+        embedder_kwargs=model.config.get("features", {}),
     )
     scores, stds, expl_model = _predict_scores(model, x)
     pos_sim = cosine_similarity(emb, model.pos_embeddings)
