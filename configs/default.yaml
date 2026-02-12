@@ -1,0 +1,19 @@
+seed: 42
+features:
+  embedder: none  # options: esm2_t33_650M | esm2_t12_35M | protT5 | none
+model:
+  logreg_c: 1.0
+pu:
+  strategy: bagging  # bagging | rn
+  bagging:
+    n_estimators: 50
+    unlabeled_sample_ratio: 1.0
+  rn:
+    rn_quantile: 0.15
+predict:
+  top_explain_features: 8
+  min_motif_completeness: 0.5
+eval:
+  clustering:
+    method: kmer_jaccard
+    threshold: 0.7
