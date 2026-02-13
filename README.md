@@ -196,6 +196,7 @@ scripts\run_gui.bat
 GUI 提供两个页面：
 - **训练**：填写 positives/unlabeled/(可选)negatives、策略、embedder、输出目录后训练；
 - **预测**：加载 `model.pkl` + FASTA，输出 `results.tsv` 与 `results.json`，并在界面中展示表格与候选优先级。
+  - 新增“预测时可选覆盖 ESM/结构配置”，可单独指定本地 ESM 权重目录（不必重新训练）。
 
 
 ## Windows 使用建议（重点）

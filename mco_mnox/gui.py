@@ -121,6 +121,19 @@ def run_app() -> None:
         with c2:
             out_tsv = st.text_input("输出 TSV", "runs/gui_run/results.tsv")
 
+        st.markdown("#### 预测时可选覆盖 ESM/结构配置")
+        override_feat = st.checkbox("覆盖 model.pkl 内的特征配置", value=False)
+        p1, p2 = st.columns(2)
+        with p1:
+            pred_esm_local_dir = st.text_input("[预测覆盖] ESM 本地权重目录", "")
+            pred_esm_force_local = st.checkbox("[预测覆盖] 仅本地加载", value=False)
+            pred_structure_features_path = st.text_input("[预测覆盖] 结构特征TSV", "")
+        with p2:
+            pred_embedder = st.selectbox("[预测覆盖] Embedding", ["none", "esm2_t12_35M", "esm2_t33_650M", "protT5"], index=0)
+            pred_esm_device = st.selectbox("[预测覆盖] ESM 设备", ["auto", "cpu", "cuda"], index=0)
+            pred_esm_max_length = st.number_input("[预测覆盖] ESM max length", min_value=128, value=1024, step=64)
+            pred_esm_long_strategy = st.selectbox("[预测覆盖] 长序列策略", ["chunk_mean", "truncate"], index=0)
+
         if st.button("开始预测", type="primary"):
             m_p = _safe_path(model_path)
             f_p = _safe_path(fasta_path)
@@ -133,6 +146,15 @@ def run_app() -> None:
                 o_p.parent.mkdir(parents=True, exist_ok=True)
                 with st.spinner("预测中..."):
                     model = load_model(str(m_p))
+                    if override_feat:
+                        model.config.setdefault("features", {})
+                        model.config["features"]["embedder"] = pred_embedder
+                        model.config["features"]["esm_local_dir"] = pred_esm_local_dir.strip()
+                        model.config["features"]["esm_force_local"] = bool(pred_esm_force_local)
+                        model.config["features"]["esm_device"] = pred_esm_device
+                        model.config["features"]["esm_max_length"] = int(pred_esm_max_length)
+                        model.config["features"]["esm_long_strategy"] = pred_esm_long_strategy
+                        model.config["features"]["structure_features_path"] = pred_structure_features_path.strip()
                     df, rec = predict(model=model, fasta=str(f_p), out_tsv=str(o_p))
                 st.success(f"预测完成。结果写入: {o_p} 和 {o_p.with_suffix('.json')}")
                 st.dataframe(df, use_container_width=True)
