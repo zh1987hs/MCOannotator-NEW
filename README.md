@@ -157,6 +157,19 @@ $env:HF_ENDPOINT="https://hf-mirror.com"
 - 找不到 `.venv\Scripts\python.exe`：说明 setup 未成功，先重跑 `\windows_setup.ps1`。
 - `streamlit` 缺失：`& .\.venv\Scripts\python.exe -m pip install -r requirements.txt`。
 
+
+- 若报错 `Repo id must be in the form ... 'D:/models/...'`：
+  这通常意味着你填的 `esm_local_dir` 目录不存在或路径写错。请检查：
+
+```powershell
+Test-Path D:/models/esm2_t33_650M_UR50D
+Get-ChildItem D:/models/esm2_t33_650M_UR50D
+```
+
+  目录里至少应包含 `config.json`、tokenizer 相关文件和模型权重文件；
+  若目录不存在，先重新执行 `scripts/download_esm.py` 下载。
+
+
 ## GUI 使用（Streamlit）
 
 安装依赖后可直接启动本地图形界面：

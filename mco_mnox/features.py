@@ -28,6 +28,22 @@ ESM_MODEL_MAP = {
 }
 
 
+def _is_probable_local_path(path_str: str) -> bool:
+    # Windows drive path (e.g., D:/..., D:\...), UNC path, or explicit relative/absolute path markers
+    if re.match(r"^[A-Za-z]:[\/]", path_str):
+        return True
+    if path_str.startswith("\\"):
+        return True
+    return path_str.startswith(("./", ".\\", "../", "..\\", "/", "~"))
+
+
+def _resolve_local_model_dir(local_dir: str) -> Path:
+    p = Path(local_dir).expanduser()
+    if not p.is_absolute():
+        p = p.resolve()
+    return p
+
+
 def _find_first(pattern: str, seq: str):
     m = re.search(pattern, seq)
     if m:
@@ -175,11 +191,33 @@ class EmbeddingExtractor:
 
         local_dir = self.embedder_kwargs.get("esm_local_dir")
         force_local = bool(self.embedder_kwargs.get("esm_force_local", False))
-        target = str(local_dir).strip() if local_dir else ESM_MODEL_MAP[self.embedder]
-        local_files_only = force_local or bool(local_dir)
 
-        self._esm_tokenizer = AutoTokenizer.from_pretrained(target, local_files_only=local_files_only)
-        self._esm_model = AutoModel.from_pretrained(target, local_files_only=local_files_only)
+        target: str
+        local_files_only: bool
+        if local_dir and str(local_dir).strip():
+            local_path_raw = str(local_dir).strip()
+            local_path = _resolve_local_model_dir(local_path_raw)
+            if not local_path.exists() or not local_path.is_dir():
+                raise FileNotFoundError(
+                    "ESM local directory not found: "
+                    f"{local_path_raw}. Please download model files first, or clear esm_local_dir."
+                )
+            target = str(local_path)
+            local_files_only = True
+        else:
+            target = ESM_MODEL_MAP[self.embedder]
+            local_files_only = force_local
+
+        try:
+            self._esm_tokenizer = AutoTokenizer.from_pretrained(target, local_files_only=local_files_only)
+            self._esm_model = AutoModel.from_pretrained(target, local_files_only=local_files_only)
+        except OSError as e:
+            if _is_probable_local_path(str(target)):
+                raise OSError(
+                    f"Failed to load local ESM model from '{target}'. "
+                    "Ensure config.json/tokenizer files/model weights are present in that folder."
+                ) from e
+            raise
 
         device = self.embedder_kwargs.get("esm_device", "cpu")
         if device == "auto":
