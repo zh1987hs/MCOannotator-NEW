@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import re
 from collections import Counter
@@ -29,7 +30,6 @@ ESM_MODEL_MAP = {
 
 
 def _is_probable_local_path(path_str: str) -> bool:
-    # Windows drive path (e.g., D:/..., D:\...), UNC path, or explicit relative/absolute path markers
     if re.match(r"^[A-Za-z]:[\/]", path_str):
         return True
     if path_str.startswith("\\"):
@@ -141,7 +141,6 @@ def _low_complexity_ratio(seq: str, k: int = 3) -> float:
 
 
 def kmer_embed(seq: str, k: int = 3) -> np.ndarray:
-    # deterministic fallback embedding; keeps CPU-only offline usability
     dim = len(AA) ** 2
     vec = np.zeros(dim, dtype=np.float32)
     if len(seq) < k:
@@ -154,6 +153,58 @@ def kmer_embed(seq: str, k: int = 3) -> np.ndarray:
         vec[idx] += 1
     vec /= max(1.0, vec.sum())
     return vec
+
+
+def _sequence_chunks(seq: str, chunk_size: int, overlap: int) -> List[str]:
+    if len(seq) <= chunk_size:
+        return [seq]
+    step = max(1, chunk_size - max(0, overlap))
+    chunks = []
+    for i in range(0, len(seq), step):
+        s = seq[i : i + chunk_size]
+        if not s:
+            break
+        chunks.append(s)
+        if i + chunk_size >= len(seq):
+            break
+    return chunks
+
+
+def load_structure_features(
+    records: List[SequenceRecord], structure_features_path: Optional[str]
+) -> Tuple[np.ndarray, List[str], List[Dict[str, float]]]:
+    if not structure_features_path:
+        return np.zeros((len(records), 0), dtype=np.float32), [], [{} for _ in records]
+
+    p = Path(structure_features_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Structure feature TSV not found: {structure_features_path}")
+
+    mapping: Dict[str, Dict[str, float]] = {}
+    all_cols: List[str] = []
+    with open(p, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        if "seq_id" not in (reader.fieldnames or []):
+            raise ValueError("Structure feature TSV must include 'seq_id' column")
+        all_cols = [c for c in reader.fieldnames if c != "seq_id"]
+        for row in reader:
+            sid = row["seq_id"]
+            mapping[sid] = {}
+            for c in all_cols:
+                try:
+                    mapping[sid][c] = float(row[c])
+                except Exception:
+                    mapping[sid][c] = 0.0
+
+    rows = []
+    for r in records:
+        d = dict(mapping.get(r.seq_id, {}))
+        d["structure_feature_missing"] = float(r.seq_id not in mapping)
+        rows.append(d)
+
+    cols = sorted({k for d in rows for k in d.keys()})
+    mat = np.array([[d.get(c, 0.0) for c in cols] for d in rows], dtype=np.float32)
+    return mat, cols, rows
 
 
 class EmbeddingExtractor:
@@ -246,12 +297,26 @@ class EmbeddingExtractor:
             pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
         return pooled.detach().cpu().numpy().astype(np.float32)
 
+    def _embed_single_esm(self, seq: str) -> np.ndarray:
+        max_len = int(self.embedder_kwargs.get("esm_max_length", 1024))
+        strategy = str(self.embedder_kwargs.get("esm_long_strategy", "chunk_mean"))
+        chunk_size = int(self.embedder_kwargs.get("esm_chunk_size", max_len))
+        chunk_overlap = int(self.embedder_kwargs.get("esm_chunk_overlap", 128))
+
+        if len(seq) <= max_len or strategy == "truncate":
+            return self._embed_batch_esm([seq])[0]
+
+        chunks = _sequence_chunks(seq, chunk_size=chunk_size, overlap=chunk_overlap)
+        chunk_vecs = self._embed_batch_esm(chunks)
+        weights = np.array([len(c) for c in chunks], dtype=np.float32)
+        weights /= max(weights.sum(), 1.0)
+        return (chunk_vecs * weights[:, None]).sum(axis=0).astype(np.float32)
+
     def _embed_single(self, seq: str) -> np.ndarray:
         if self.embedder == "none":
             return kmer_embed(seq, k=3)
         if self.embedder in ESM_MODEL_MAP:
-            return self._embed_batch_esm([seq])[0]
-        # fallback for unsupported names (e.g., protT5 placeholder)
+            return self._embed_single_esm(seq)
         return kmer_embed(seq, k=3)
 
     def embed(self, records: List[SequenceRecord]) -> np.ndarray:
@@ -274,11 +339,26 @@ class EmbeddingExtractor:
 
         if missing_indices:
             if self.embedder in ESM_MODEL_MAP:
-                bs = int(self.embedder_kwargs.get("esm_batch_size", 4))
-                generated = []
-                for i in range(0, len(missing_seqs), bs):
-                    generated.append(self._embed_batch_esm(missing_seqs[i : i + bs]))
-                gen_emb = np.vstack(generated)
+                max_len = int(self.embedder_kwargs.get("esm_max_length", 1024))
+                strategy = str(self.embedder_kwargs.get("esm_long_strategy", "chunk_mean"))
+                short_pack = [(i, s) for i, s in enumerate(missing_seqs) if len(s) <= max_len or strategy == "truncate"]
+                long_pack = [(i, s) for i, s in enumerate(missing_seqs) if len(s) > max_len and strategy != "truncate"]
+
+                gen = [None] * len(missing_seqs)
+                if short_pack:
+                    bs = int(self.embedder_kwargs.get("esm_batch_size", 4))
+                    idxs = [i for i, _ in short_pack]
+                    seqs = [s for _, s in short_pack]
+                    cursor = 0
+                    for j in range(0, len(seqs), bs):
+                        batch = seqs[j : j + bs]
+                        vecs = self._embed_batch_esm(batch)
+                        for k in range(len(batch)):
+                            gen[idxs[cursor]] = vecs[k]
+                            cursor += 1
+                for i, s in long_pack:
+                    gen[i] = self._embed_single_esm(s)
+                gen_emb = np.vstack(gen)
             else:
                 gen_emb = np.vstack([self._embed_single(s) for s in missing_seqs])
 
@@ -309,8 +389,20 @@ def handcrafted_features(records: List[SequenceRecord]) -> Tuple[np.ndarray, Lis
 
 
 def build_features(records: List[SequenceRecord], embedder: str, cache_path: str | Path, embedder_kwargs: Optional[Dict] = None):
+    embedder_kwargs = embedder_kwargs or {}
     emb = EmbeddingExtractor(embedder=embedder, cache_path=cache_path, embedder_kwargs=embedder_kwargs).embed(records)
     hand, hand_rows, hand_names = handcrafted_features(records)
-    x = np.hstack([emb, hand])
+
+    struct_path = embedder_kwargs.get("structure_features_path", "")
+    struct_mat, struct_names, struct_rows = load_structure_features(records, struct_path)
+    for i in range(len(hand_rows)):
+        hand_rows[i].update(struct_rows[i])
+
+    mats = [emb, hand]
     feat_names = [f"emb_{i}" for i in range(emb.shape[1])] + hand_names
+    if struct_mat.shape[1] > 0:
+        mats.append(struct_mat)
+        feat_names += [f"struct_{n}" for n in struct_names]
+
+    x = np.hstack(mats)
     return x, feat_names, hand_rows, emb

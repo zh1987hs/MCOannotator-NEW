@@ -270,6 +270,9 @@ features:
 - 离线模式：把模型目录完整下载到本地后，设置 `esm_local_dir` + `esm_force_local: true`。
 - 在线模式：`esm_local_dir` 留空，`esm_force_local: false`，程序会按模型名在线下载并缓存。
 
+
+- 长序列（>1024 aa）推荐使用 `esm_long_strategy: chunk_mean`，避免直接截断丢失远端结构域信息。
+
 中国大陆建议：
 - 优先离线模式（最稳定）；
 - 在线模式可配代理或镜像；
@@ -308,6 +311,42 @@ features:
   esm_local_dir: "D:/models/esm2_t33_650M_UR50D"
   esm_force_local: true
 ```
+
+
+#### 长序列与可选结构信息（推荐）
+
+对于 MCO 中较长序列（>1024aa），可在配置中启用分块聚合：
+
+```yaml
+features:
+  esm_max_length: 1024
+  esm_long_strategy: chunk_mean   # chunk_mean | truncate
+  esm_chunk_size: 1024
+  esm_chunk_overlap: 128
+```
+
+- `chunk_mean`：将长序列切块后计算 embedding 并按块长度加权平均（推荐）；
+- `truncate`：直接截断到 `esm_max_length`（更快但可能损失信息）。
+
+可选结构信息接入方式：
+
+1) 准备 `seq_id` 对齐的结构特征 TSV（第一列必须是 `seq_id`，其余为数值列）；
+2) 在配置中指定：
+
+```yaml
+features:
+  structure_features_path: "D:/data/structure_features.tsv"
+```
+
+程序会自动拼接这些结构特征到最终特征向量；缺失结构数据的序列会打上 `structure_feature_missing=1`。
+
+如果你有 AlphaFold/PDB 结构文件，可用脚本提取基础结构特征：
+
+```powershell
+& .\.venv\Scripts\python.exe scripts/extract_structure_features.py --pdb-dir D:/data/pdbs --out D:/data/structure_features.tsv
+```
+
+当前脚本会输出：`structure_mean_bfactor`、`structure_rg`、`structure_ca_count`。
 
 ## 2) 如何准备 positives/unlabeled 数据
 

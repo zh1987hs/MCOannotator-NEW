@@ -1,11 +1,15 @@
 seed: 42
 features:
   embedder: none  # options: esm2_t33_650M | esm2_t12_35M | protT5 | none
-  esm_local_dir: ""  # local model dir for offline usage, e.g. D:/models/esm2_t33_650M_UR50D
+  esm_local_dir: ""  # local model dir for offline usage
   esm_force_local: false  # true => local_files_only
   esm_device: auto  # auto | cpu | cuda
   esm_batch_size: 4
   esm_max_length: 1024
+  esm_long_strategy: chunk_mean  # chunk_mean | truncate
+  esm_chunk_size: 1024
+  esm_chunk_overlap: 128
+  structure_features_path: ""  # optional TSV with seq_id + numeric structure features
 model:
   logreg_c: 1.0
 pu:

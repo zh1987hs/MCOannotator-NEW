@@ -54,6 +54,15 @@ def run_app() -> None:
             esm_batch_size = st.number_input("ESM batch size", min_value=1, value=4, step=1)
             esm_max_length = st.number_input("ESM max length", min_value=128, value=1024, step=64)
 
+        st.markdown("#### 长序列与结构信息（可选）")
+        c5, c6 = st.columns(2)
+        with c5:
+            esm_long_strategy = st.selectbox("长序列策略", ["chunk_mean", "truncate"], index=0)
+            esm_chunk_size = st.number_input("ESM chunk size", min_value=128, value=1024, step=64)
+            esm_chunk_overlap = st.number_input("ESM chunk overlap", min_value=0, value=128, step=16)
+        with c6:
+            structure_features_path = st.text_input("结构特征TSV（可选）", "")
+
         if st.button("开始训练", type="primary"):
             pos_p, unl_p, neg_p = _safe_path(pos), _safe_path(unl), _safe_path(neg)
             outdir_p, cfg_p = _safe_path(outdir), _safe_path(config_path)
@@ -76,6 +85,10 @@ def run_app() -> None:
                 cfg["features"]["esm_device"] = esm_device
                 cfg["features"]["esm_batch_size"] = int(esm_batch_size)
                 cfg["features"]["esm_max_length"] = int(esm_max_length)
+                cfg["features"]["esm_long_strategy"] = esm_long_strategy
+                cfg["features"]["esm_chunk_size"] = int(esm_chunk_size)
+                cfg["features"]["esm_chunk_overlap"] = int(esm_chunk_overlap)
+                cfg["features"]["structure_features_path"] = structure_features_path.strip()
                 outdir_p.mkdir(parents=True, exist_ok=True)
 
                 set_seed(int(seed))
