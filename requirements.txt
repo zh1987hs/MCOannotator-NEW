@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+biopython
+pyyaml
+pytest
+streamlit
+torch
+transformers
+huggingface_hub
